@@ -61,7 +61,7 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
   },
   NS=function(text){
     text
-  }.
+  },
   SPF=function(text){
    text
   },
@@ -103,8 +103,7 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
 
 
 ipSort<-function(ipAddrs,...){
-# NOT TESTED
-  ipNums<-iptoint(ipAddrs)
+  ipNums<-ip2int(ipAddrs)
   ipAddrs[order(ipNums,...)]
 }
 

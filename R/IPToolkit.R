@@ -59,6 +59,9 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
      fields<-sapply(fields,FUN=function(txt){txt[2]})
      fields
   },
+  NS=function(text){
+    text
+  }.
   SPF=function(text){
    text
   },
@@ -99,12 +102,10 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
 }
 
 
-whois<-function(domain){
-  
-}
-
-netblock<-function(ipAddress){
-  
+ipSort<-function(ipAddrs,...){
+# NOT TESTED
+  ipNums<-iptoint(ipAddrs)
+  ipAddrs[order(ipNums,...)]
 }
 
 loadIPLocationData<-function(filename,format="ip2l"){

@@ -1,45 +1,25 @@
 library(stringr)
 
-nslookup <- function (name,server=NA,type="A",debug=F) {
+nslookup <- function (name,type="A",server=NA) {
   cmdline<-"nslookup"
   typeArg<-"-type"
   
   type<-toupper(type)
   
   parsers <-c(A=function(text){
-    out<-NULL
-    text<-text[-1:-4]
-    cn_fields<-grepl("canonical name =",text)
-    cnames<-text[cn_fields]
-    addrs<-text[!cn_fields]
-    tm<-matrix(addrs,ncol=2,byrow=T)
-    tm[,1]<-sapply(strsplit(tm[,1],split="\\t"),FUN=function(x){x[2]})
-    tm[,2]<-sapply(strsplit(tm[,2],split=" "),FUN=function(x){x[2]})
-    out_addrs<-data.frame(tm,stringsAsFactors=F)
-    out_addrs<-out_addrs[1:nrow(out_addrs)-1,]
-    colnames(out_addrs)<-c("Name","Address")
-    out$Address<-out_addrs
-    
-    if(sum(cn_fields)>0){
-      cn<-strsplit(cnames,split="\tcanonical name = ")
-      cn<-simplify2array(cn)
-      out$CName<-data.frame(cn,stringsAsFactors=F)
-      colnames(out$cname)<-c("Name","Alias")
-    }
-    
-    out
-#    tm<-matrix(text,ncol=2,byrow=T)
-#    tm<-tm[grepl("Name:",tm[,1]),]
-#    sapply(strsplit(tm[,2],split=" "),FUN=function(l){l[2]})
+    addrs<-text[grepl("Address:",text)]
+    addrs<-addrs[-1]
+    addrs<-sapply(strsplit(addrs,split=" "),FUN=function(addr){addr[2]})
+    data.frame(addrs,stringsAsFactors=F)
   },
     MX=function(text){
       text<-text[grepl("mail exchanger",text)]
       text<-simplify2array(strsplit(text,split="="))
-      mx=strsplit(str_trim(text[2,]),split=" ")
+      mx<-strsplit(str_trim(text[2,]),split=" ")
       mx<-data.frame(t(simplify2array(mx)),stringsAsFactors=F)
       colnames(mx)<-c("Priority","Server")
       mx$Priority=as.integer(mx$Priority)
-      mx<-mx[order(mx$Priority),]
+      mx<-data.frame(mx[order(mx$Priority),2],stringsAsFactors=F)
       mx
   },
     SOA=function(text){
@@ -48,7 +28,7 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
       fields<-strsplit(fields,split=" = ")
       out=NULL
       lapply(fields,FUN=function(fieldrow){out[fieldrow[1]]<<-fieldrow[2]})
-      out<-data.frame(out)
+      out<-data.frame(out,stringsAsFactors=F)
       colnames(out)<-c("value")
       out
     },
@@ -57,13 +37,19 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
      fields<-gsub("\t","",fields)
      fields<-strsplit(fields,"\\\"")
      fields<-sapply(fields,FUN=function(txt){txt[2]})
-     fields
+     data.frame(text=fields,stringsAsFactors=F)
   },
   NS=function(text){
-    text
+    text<-text[grepl("nameserver = ",text)]
+    ns<-simplify2array(strsplit(text,split="="))[2,]
+    ns<-substr(ns,start=2,stop=nchar(ns)-1)
+    data.frame(ns,stringsAsFactors=F)
   },
   SPF=function(text){
-   text
+   res<-sapply(regexec("(v=spf.*)",text),FUN=function(res){if (res[1]>1){stop<-attributes(res)$match.length[2];start<-res[2];c(start,stop)}else{c(0,0)}})
+   out<-substr(text,res[1,],res[2,]+res[1,]-2)
+   out<-out[which(nchar(out)>0)]
+   data.frame(spf=out,stringsAsFactors=F);
   },
   AAAA=function(text){
     fields<-text[which(grepl("has AAAA address",text))]
@@ -73,32 +59,38 @@ nslookup <- function (name,server=NA,type="A",debug=F) {
 
   }
   
-);
+  )
 
   if(is.null(parsers[type][[1]])){
     stop(paste("Unknown lookup type: ",type))
   }
-  
-  typeArg<-paste(typeArg,type,sep="=")
-  cmdline<-paste(cmdline,typeArg)  
+  out<-lapply(name,FUN=function(name){
+    typeArg<-paste(typeArg,type,sep="=")
+    cmdline<-paste(cmdline,typeArg)  
+      
+    cmdline<-paste(cmdline,name)
     
-  cmdline<-paste(cmdline,name)
+    if(!is.na(server)){
+      cmdline<-paste(cmdline,server)
+    }
+    
+    resp<-system(cmdline,intern=T)
+    if(grepl(pattern="no servers could be reached",x=paste0(resp,collapse=""))){
+      stop("No servers could be reached, lookup failed")
+    }
+    
+    #padding
+    if(length(resp)%%2==1) resp[length(resp)+1]<-""
   
-  if(!is.na(server)){
-    cmdline<-paste(cmdline,server)
+    func<-parsers[type][[1]]
+    func(resp)
+  })
+  names(out)<-name
+  if (length(name)==1){
+    out<-out[[1]]
   }
-  
-  resp<-system(cmdline,intern=T)
-  if(debug) d_out<<-resp
-  if(grepl(pattern="no servers could be reached",x=paste0(resp,collapse=""))){
-    stop("No servers could be reached, lookup failed")
-  }
-  
-  #padding
-  if(length(resp)%%2==1) resp[length(resp)+1]<-""
 
-  func<-parsers[type][[1]]
-  func(resp)
+  out
 }
 
 
